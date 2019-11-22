@@ -1,4 +1,4 @@
-Copyright 2001-2019
+Copyright (c) 2001-2019
 by the Board of Trustees of the 
 Leland Stanford Junior University
 All rights reserved.
