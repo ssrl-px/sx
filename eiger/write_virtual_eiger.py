@@ -3,33 +3,25 @@ import os
 import h5py
 
 import numpy as np
-from argparse import ArgumentParser
+import glob
 
 # <><><><><><><><><><><><>
-
-parser = ArgumentParser()
-parser.add_argument("scoreFile", type=str, help="path to Jinhu's .txt file containing scores and image ids")
-parser.add_argument("outFile", type=str, help="name of the output image file")
-
-parser.add_argument("--minScore", type=int, help="Minimum allowed score for an image to go to the virtual hdf5 file (default=1)", default=1)
-args = parser.parse_args()
 
 MASTER_ENTRY = "/entry/data"
 
-# <><><><><><><><><><><><>
-
-det="entry/instrument/detector"
+_det="entry/instrument/detector"
 MODEL_KEYS = ['entry/instrument/beam/incident_wavelength',
-        det+"/detector_distance",
-        det+"/beam_center_x",
-        det+"/beam_center_y",
-        det+"/x_pixel_size",
-        det+"/y_pixel_size",
-        det+"/sensor_material",
-        det+"/sensor_thickness",
-        det+"/detectorSpecific/x_pixels_in_detector",
-        det+"/detectorSpecific/y_pixels_in_detector"]
+        _det+"/detector_distance",
+        _det+"/beam_center_x",
+        _det+"/beam_center_y",
+        _det+"/x_pixel_size",
+        _det+"/y_pixel_size",
+        _det+"/sensor_material",
+        _det+"/sensor_thickness",
+        _det+"/detectorSpecific/x_pixels_in_detector",
+        _det+"/detectorSpecific/y_pixels_in_detector"]
 
+# <><><><><><><><><><><><>
 
 def get_frames_per_h5(master_file):
     master_dir = os.path.dirname(master_file)
@@ -72,9 +64,51 @@ def get_dset_sample(master_file):
     if dset is None:
         raise OSError("hdf5 master file %s has no readable external links" % master_file)
     return dset
+
+
+def dataDir_to_virtual(dat_dir, out_name):
+    """
+    data_dir, path to a folder containing master files
+    out_name, output hdf5 name; will be FormatHDF5VirtualEiger format
+    """
+    fnames = glob.glob("%s/*master*" % dat_dir)
+    all_entries = []
+    for i_f, f in enumerate(fnames):
+        h = h5py.File(f, 'r')
+        G = h['entry/data']
+        nfiles =G.keys()
+        nfiles = sorted(nfiles, key=lambda x: int(x.split("_")[-1]))
+        offset = 0
+        entries =[]
+        for k in nfiles:
+            link = G.get(k, getlink=True)
+            
+            filepath = os.path.join(os.path.dirname(f), link.filename)
+            if not os.path.exists(filepath):
+                continue
+            dset = h5py.File(filepath, 'r')[link.path]
+            print(os.path.basename(f), os.path.basename(filepath), dset.shape[0])
+            n = dset.shape[0]
+            global_inds = np.arange(offset, offset+n,1)
+            entries += list(zip([os.path.basename(f)]*n, global_inds))
+            offset += n
+        all_entries+= entries
+
+    fname_info = []
+    for entry in all_entries:
+        s = "%s~%d" % entry
+        print(s)
+        fname_info.append(s)
+
+    main(fname_info, dat_dir, out_name)
     
 
-def main(score_file, min_score, out_name):
+def scoreFile_to_virtual(score_file, min_score, out_name):
+    """
+    score_file: path to Jinhus score .txt file
+    min_score: minimum score allowed 
+    out_name: output hdf5 name, will be FormatHDF5VirtualEiger format
+    """
 
     lines = open(score_file, "r").readlines()
 
@@ -93,9 +127,20 @@ def main(score_file, min_score, out_name):
     scores = scores[sel]
     # optionally sort by score ? 
     #order = np.argsort(scores)[::-1]
+    #scores = scores[order]
     #fname_info = entries[sel, 0][order]
 
     fname_info = entries[sel, 0]
+
+    main(fname_info, data_dir, out_name)
+
+
+def main(fname_info, data_dir, out_name):
+    """
+    fname_info: list of "master_file_basename.h5~dset_idx" where dset_idx is an integer specifying image name within the master file
+    data_dir: path where master files are stored
+    out_name: output hdf5 name
+    """
 
     all_master_fnames = [  os.path.join(data_dir , l.split("~")[0]) for l in fname_info]
 
@@ -170,8 +215,21 @@ def main(score_file, min_score, out_name):
         writer["entry/data/data_000001"] = writer["virtual_eiger_ssrl_data"]
         
 
-    print("Wrote virtual hdf5 file %s with %d shots!" % (out_name, len(scores) ))
+    print("Wrote virtual hdf5 file %s with %d shots!" % (out_name, len(fname_info) ))
+
 
 if __name__=="__main__":
-    main(args.scoreFile, args.minScore, args.outFile)
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument("input", type=str, help="either a datadir with master files -OR- a path to Jinhu's .txt file containing scores and image ids")
+    parser.add_argument("outFile", type=str, help="name of the output image file")
+
+    parser.add_argument("--minScore", type=int, help="Minimum allowed score for an image to go to the virtual hdf5 file (default=1)", default=1)
+    args = parser.parse_args()
+
+    if os.path.isdir(args.input):
+        dataDir_to_virtual(args.input, args.outFile)
+    else:
+        scoreFile_to_virtual(args.input, args.minScore, args.outFile)
 
