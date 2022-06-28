@@ -9,6 +9,7 @@ import numpy as np
 from dxtbx.format.FormatHDF5 import FormatHDF5
 from dxtbx.format.FormatStill import FormatStill
 from dxtbx import IncorrectFormatError
+from dxtbx.format.FormatPilatusHelpers import determine_eiger_mask
 
 
 class FormatHDF5Eiger2SSRL(FormatHDF5, FormatStill):
@@ -131,9 +132,8 @@ class FormatHDF5Eiger2SSRL(FormatHDF5, FormatStill):
             mu=mu,
         )
 
-        # TODO: check the mask
-        #for f0, f1, s0, s1 in determine_eiger_mask(detector):
-        #    detector[0].add_mask(f0 - 1, s0 - 1, f1, s1)
+        for f0, f1, s0, s1 in determine_eiger_mask(detector):
+            detector[0].add_mask(f0 - 1, s0 - 1, f1, s1)
 
         for panel in detector:
             panel.set_thickness(thickness)
