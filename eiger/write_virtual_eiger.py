@@ -21,13 +21,18 @@ MODEL_KEYS = ['entry/instrument/beam/incident_wavelength',
         _det+"/detectorSpecific/x_pixels_in_detector",
         _det+"/detectorSpecific/y_pixels_in_detector"]
 
+SCORE_POS = 3
+NSPOTS_POS = 1
+
 # <><><><><><><><><><><><>
 
-def get_frames_per_h5(master_file):
+def get_frames_per_h5(master_file, verbose=False):
     master_dir = os.path.dirname(master_file)
     h = h5py.File(master_file, "r")
     img_grp = h['entry/data']
     external_links = list(img_grp.keys())
+    if verbose:
+        print(external_links)
     linked_files = []
     for l in external_links:
         link = img_grp.get(l, getlink=True)
@@ -103,7 +108,7 @@ def dataDir_to_virtual(dat_dir, out_name):
     main(fname_info, dat_dir, out_name)
     
 
-def scoreFile_to_virtual(score_file, min_score, out_name):
+def scoreFile_to_virtual(score_file, min_score, out_name, min_nspots=10):
     """
     score_file: path to Jinhus score .txt file
     min_score: minimum score allowed 
@@ -120,11 +125,16 @@ def scoreFile_to_virtual(score_file, min_score, out_name):
         
 
     entries = np.array([l.strip().split() for l in entries])
-    scores = entries[:,1].astype(int)  # TODO: update with real Jinhu file
+    scores = entries[:,SCORE_POS].astype(int)  # TODO: update with real Jinhu file
+    nspots = entries[:,NSPOTS_POS].astype(int)  # TODO: update with real Jinhu file
     # choose the good ones
-    sel = scores >= min_score
+    sel = (scores >= min_score ) * ( nspots >= min_nspots)
+    if not np.any(sel):
+        print("No entries selected for virtualization, lower minScore and/or minNpots")
+        return
 
     scores = scores[sel]
+    nspots = nspots[sel]
     # optionally sort by score ? 
     #order = np.argsort(scores)[::-1]
     #scores = scores[order]
@@ -132,19 +142,25 @@ def scoreFile_to_virtual(score_file, min_score, out_name):
 
     fname_info = entries[sel, 0]
 
-    main(fname_info, data_dir, out_name)
+    main(fname_info, data_dir, out_name, False)
 
 
-def main(fname_info, data_dir, out_name):
+def main(fname_info, data_dir, out_name, zero_based_indexing=True):
     """
     fname_info: list of "master_file_basename.h5~dset_idx" where dset_idx is an integer specifying image name within the master file
     data_dir: path where master files are stored
     out_name: output hdf5 name
     """
+    if len(fname_info) ==0 :
+        print("Nothing to process! fname_info has 0 length")
+        return
 
     all_master_fnames = [  os.path.join(data_dir , l.split("~")[0]) for l in fname_info]
 
-    all_dset_inds = [int(l.split("~")[1]) for l in fname_info]
+    offset = 0
+    if not zero_based_indexing:
+        offset = 1
+    all_dset_inds = [int(l.split("~")[1])-offset for l in fname_info]
 
     unique_masters = set(all_master_fnames)
     print("getting frames per master file (%d master files)" % len(unique_masters))
@@ -157,14 +173,12 @@ def main(fname_info, data_dir, out_name):
     for f in unique_masters:
         open_masters[f] = h5py.File(f, 'r')[MASTER_ENTRY]
 
-
     test_dset = get_dset_sample(all_master_fnames[0])
     sdim = test_dset.shape[1]
     fdim = test_dset.shape[2]
     dtype = test_dset.dtype
 
     Vlayout = h5py.VirtualLayout(shape=(num_imgs, sdim, fdim), dtype=dtype)
-
 
     sources = {}
 
@@ -181,7 +195,8 @@ def main(fname_info, data_dir, out_name):
         link_name %= str(master_file_idx+1).zfill(nzeros)
         link = data_grp.get(link_name, getlink=True)
         assert link is not None, "A link here should never be None, something is wrong!"
-        print(os.path.basename(master_name), master_file_idx, master_file_offset, link.filename, link.path)
+        print(i_img, os.path.basename(master_name), master_file_idx, master_file_offset, link.filename, link.path)
+
         source_path = os.path.join(MASTER_ENTRY,link_name)
         source_key= master_name, source_path
 
@@ -191,7 +206,12 @@ def main(fname_info, data_dir, out_name):
             Vsource = h5py.VirtualSource(master_name, source_path, shape=source_shape)
             sources[source_key] = Vsource
 
-        Vlayout[i_img] = sources[source_key][master_file_offset] 
+        try:
+            SOURCE = sources[source_key][master_file_offset]
+        except:
+            from IPython import embed;embed()
+
+        Vlayout[i_img] = SOURCE #$sources[source_key][master_file_offset] 
 
 
     with h5py.File(out_name, "w") as writer:
@@ -226,10 +246,12 @@ if __name__=="__main__":
     parser.add_argument("outFile", type=str, help="name of the output image file")
 
     parser.add_argument("--minScore", type=int, help="Minimum allowed score for an image to go to the virtual hdf5 file (default=1)", default=1)
+    parser.add_argument("--minNspots", type=int, help="Minimum number of spots for an image to go to the virtual hdf5 file (default=10)", default=10)
+    args = parser.parse_args()
     args = parser.parse_args()
 
     if os.path.isdir(args.input):
         dataDir_to_virtual(args.input, args.outFile)
     else:
-        scoreFile_to_virtual(args.input, args.minScore, args.outFile)
+        scoreFile_to_virtual(args.input, args.minScore, args.outFile, args.minNspots)
 
