@@ -6,7 +6,16 @@ from dxtbx.model import BeamFactory
 from dials.array_family import flex
 import h5py
 import numpy as np
-from dxtbx.format.FormatHDF5Eiger2SSRL import FormatHDF5Eiger2SSRL
+import os
+import sys
+try:
+    from dxtbx.format.FormatHDF5Eiger2SSRL import FormatHDF5Eiger2SSRL
+except ModuleNotFoundError:
+    # NOTE: if installing with dxtbx.install_format, then the importing above wont work, and we need to hack it like this:
+    dirname = os.path.dirname(__file__)
+    sys.path.append(dirname)
+    from FormatHDF5Eiger2SSRL import FormatHDF5Eiger2SSRL
+
 
 from dxtbx.format.FormatHDF5 import FormatHDF5
 from dxtbx.format.FormatStill import FormatStill
