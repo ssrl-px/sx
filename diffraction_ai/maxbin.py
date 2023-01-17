@@ -22,6 +22,7 @@ def bin_ndarray(ndarray, new_shape, how='max'):
             ndarray = ndarray.mean(-1*(i+1))
     return ndarray
 
+
 def convert_res_img(res_img):
     img = bin_ndarray(res_img[:4360, :4148], SHAPE_MAXFILT, 'mean')
     return img[:SHAPE_CROP[0], :SHAPE_CROP[1]]
@@ -35,6 +36,7 @@ def img2int(raw_eiger):
     img = img.astype(np.uint8)
     return img[:SHAPE_CROP[0], :SHAPE_CROP[1]]
 
+
 def img2int_pil(raw_pil):
     assert raw_pil.shape==(2048,2048)
     img = bin_ndarray(raw_pil, (1024,1024), 'max')
@@ -44,13 +46,16 @@ def img2int_pil(raw_pil):
     img = img.astype(np.uint8)
     return img
 
+
 def get_quadA(img):
     quadA = np.rot90(np.rot90(img))[-SHAPE_CROP[0]//2:,-SHAPE_CROP[1]//2:]
     return quadA
 
+
 def get_quadA_pil(img):
     quadA = np.rot90(np.rot90(img))[-512:,-512:]
     return quadA
+
 
 def get_slice_pil(xy=None):
     if xy is None:
@@ -63,7 +68,6 @@ def get_slice_pil(xy=None):
     ysl = slice(y-1024,y+1024,1) 
     xsl = slice(x-1024,x+1024,1)
     return ysl, xsl
-
 
 
 if __name__=="__main__":
